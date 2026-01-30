@@ -262,7 +262,7 @@ def lang_cb(call):
             pass
     chat_id = call.message.chat.id
     user_selected_lang[chat_id] = code
-    bot.answer_callback_query(call.id, f"Language set: {lbl} ☑️")
+    bot.answer_callback_query(call.id, f"you set: {lbl} ☑️")
     return
 
 @bot.callback_query_handler(func=lambda c: c.data.startswith('summarize_menu|'))
