@@ -230,7 +230,7 @@ def help_command(message):
             "`\"Refine this text, fix grammar and punctuation, but keep the original meaning.\"`\n\n"
             "**3. File is too big (Over 20MB)?**\n"
             "Telegram limits bot downloads to 20MB. To bypass this:\n"
-            "• Compress your audio using free sites like [wecompress.com](https://www.wecompress.com) or [compress-audio.com](https://www.compress-audio.com).\n"
+            "• Compress your audio using free sites like [online audio converter.com](https://online-audio-converter.com) or [clideo compress-video](https://clideo.com/compress-video).\n"
             "• Reduce the bitrate and then send the file here.\n\n"
             "**4. Support:**\n"
             "If you need extra help or have suggestions, contact the developer: @orlaki"
