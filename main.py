@@ -121,7 +121,7 @@ def keep_alive():
     t.start()
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-API_ID = int(os.environ.get("API_ID", "0"))
+API_ID = int(os.environ.get("API_ID", "29169428"))
 API_HASH = os.environ.get("API_HASH", "55742b16a85aac494c7944568b5507e5")
 REQUEST_TIMEOUT = int(os.environ.get("REQUEST_TIMEOUT", "300"))
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "50"))
