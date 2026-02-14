@@ -120,7 +120,7 @@ def keep_alive():
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 REQUEST_TIMEOUT = int(os.environ.get("REQUEST_TIMEOUT", "300"))
-MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "20"))
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "50"))
 MAX_UPLOAD_SIZE = MAX_UPLOAD_MB * 1024 * 1024
 MAX_MESSAGE_CHUNK = 4095
 REQUIRED_CHANNEL = os.environ.get("REQUIRED_CHANNEL", "")
