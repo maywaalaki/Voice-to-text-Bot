@@ -1,5 +1,5 @@
 Flask
 pyTelegramBotAPI
 requests
-#pyrogram
-#tgcrypto
+pyrogram
+tgcrypto
