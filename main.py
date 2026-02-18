@@ -440,7 +440,7 @@ def _process_webhook_update(raw):
 
 @flask_app.route("/", methods=["GET"])
 def index():
-    return "Bot Running", 200
+    return "Bot Running💗", 200
 
 @flask_app.route(WEBHOOK_PATH, methods=['POST'])
 def webhook():
