@@ -239,7 +239,7 @@ def send_welcome(message):
             "• voice message\n"
             "• audio file\n"
             "• video\n"
-            "• to transcribe for free\n\n"
+            "• Get Text for free\n\n"
             "Select the language spoken in your audio or video:"
         )
         kb = build_lang_keyboard("file")
