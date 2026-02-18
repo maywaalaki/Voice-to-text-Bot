@@ -14,7 +14,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton, Update
 API_ID = 29169428
 API_HASH = '55742b16a85aac494c7944568b5507e5'
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
-WEBHOOK_URL_BASE = os.environ.get("WEBHOOK_URL_BASE", "")
+WEBHOOK_URL_BASE = os.environ.get("WEBHOOK_URL_BASE", "inc-katusha-martigaliyebots-dc419d2a.koyeb.app/")
 PORT = int(os.environ.get("PORT", "8080"))
 WEBHOOK_PATH = os.environ.get("WEBHOOK_PATH", "/webhook/")
 WEBHOOK_URL = WEBHOOK_URL_BASE.rstrip('/') + WEBHOOK_PATH if WEBHOOK_URL_BASE else ""
