@@ -183,7 +183,7 @@ def polish_transcript(text):
 
 def build_action_keyboard(text_len):
     btns = []
-    if text_len > 1000:
+    if text_len > 3000:
         btns.append([InlineKeyboardButton("Get Summarize", callback_data="summarize_menu|")])
     return InlineKeyboardMarkup(btns)
 
@@ -375,7 +375,7 @@ def handle_media(message):
         duration = get_audio_duration(tmp_out_path)
         lang = user_selected_lang.get(message.chat.id)
         final_text = ""
-        if duration > 1800:
+        if duration > 1200:
             segment_pattern = os.path.join(DOWNLOADS_DIR, f"chunk_{os.path.basename(tmp_out_path)}_%03d.mp3")
             subprocess.run(["ffmpeg", "-i", tmp_out_path, "-f", "segment", "-segment_time", "1800", "-c", "copy", segment_pattern], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             chunk_files = sorted(glob.glob(segment_pattern.replace("%03d", "*")))
