@@ -1,0 +1,260 @@
+import os
+import asyncio
+import threading
+import tempfile
+import datetime
+import requests
+import logging
+from flask import Flask
+from pyrogram import Client, filters
+from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from faster_whisper import WhisperModel
+
+flask_app = Flask(__name__)
+
+@flask_app.route('/')
+def health():
+    return "Bot is running 💗", 200
+
+def run_flask():
+    flask_app.run(host="0.0.0.0", port=7860)
+
+API_ID = 29169428
+API_HASH = '55742b16a85aac494c7944568b5507e5'
+BOT_TOKEN = "7770743573:AAGZP6RUmGehufgp0ZwxxekdQ8gTdM5q5rg"
+MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "200"))
+MAX_UPLOAD_SIZE = MAX_UPLOAD_MB * 1024 * 1024
+MAX_MESSAGE_CHUNK = 4095
+DOWNLOADS_DIR = os.environ.get("DOWNLOADS_DIR", "./downloads")
+ADMIN_CHAT_ID = int(os.environ.get("ADMIN_CHAT_ID", "6964068910"))
+GROQ_API_KEY = ""
+GROQ_TEXT_MODEL = "openai/gpt-oss-120b"
+REQUEST_TIMEOUT = 60
+
+os.makedirs(DOWNLOADS_DIR, exist_ok=True)
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+whisper_model = WhisperModel(model_size_or_path="base", device="cpu", compute_type="int8")
+
+LANGS = [
+("🇬🇧 English","en"), ("🇸🇦 العربية","ar"), ("🇪🇸 Español","es"), ("🇫🇷 Français","fr"),
+("🇷🇺 Русский","ru"), ("🇩🇪 Deutsch","de"), ("🇮🇳 हिन्दी","hi"), ("🇮🇷 فارسی","fa"),
+("🇮🇩 Indonesia","id"), ("🇺🇦 Українська","uk"), ("🇦🇿 Azərbaycan","az"), ("🇮🇹 Italiano","it"),
+("🇹🇷 Türkçe","tr"), ("🇧🇬 Български","bg"), ("🇷🇸 Srpski","sr"), ("🇵🇰 اردو","ur"),
+("🇹🇭 ไทย","th"), ("🇻🇳 Tiếng Việt","vi"), ("🇯🇵 日本語","ja"), ("🇰🇷 한국어","ko"),
+("🇨🇳 中文","zh"),  ("🇸🇪 Svenska","sv"), ("🇳🇴 Norsk","no"),
+("🇮🇱 עברית","he"), ("🇩🇰 Dansk","da"), ("🇪🇹 አማርኛ","am"), ("🇫🇮 Suomi","fi"),
+("🇧🇩 বাংলা","bn"), ("🇰🇪 Kiswahili","sw"), ("🇪🇹 Oromo","om"), ("🇳🇵 नेपाली","ne"),
+("🇵🇱 Polski","pl"), ("🇬🇷 Ελληνικά","el"), ("🇨🇿 Čeština","cs"), ("🇮🇸 Íslenska","is"),
+("🇱🇹 Lietuvių","lt"), ("🇱🇻 Latviešu","lv"), ("🇭🇷 Hrvatski","hr"), ("🇷🇸 Bosanski","bs"),
+("🇭🇺 Magyar","hu"), ("🇷🇴 Română","ro"), ("🇸🇴 Somali","so"), ("🇲🇾 Melayu","ms"),
+("🇺🇿 O'zbekcha","uz"), ("🇵🇭 Tagalog","tl"), ("🇵🇹 Português","pt"),("Auto Detect ⭐️","")
+]
+
+user_mode = {}
+user_transcriptions = {}
+user_selected_lang = {}
+
+app = Client("whisper_bot", api_id=API_ID, api_hash=API_HASH, bot_token=BOT_TOKEN)
+
+def get_user_mode(uid):
+    return user_mode.get(uid, "Split messages")
+
+async def safe_execute(coro):
+    try:
+        return await coro
+    except Exception:
+        return None
+
+async def show_error(call=None, client=None, chat_id=None, reply_id=None):
+    msg = "Error 😓"
+    if call:
+        await safe_execute(call.answer(msg, show_alert=True))
+    elif client and chat_id and reply_id:
+        await safe_execute(client.send_message(chat_id, msg, reply_to_message_id=reply_id))
+
+def transcribe_local_file(file_path, language=None):
+    if language == "":
+        language = None
+    segments, _ = whisper_model.transcribe(file_path, language=language)
+    return " ".join(segment.text for segment in segments).strip()
+
+async def transcribe_local_file_async(file_path, language=None):
+    return await asyncio.to_thread(transcribe_local_file, file_path, language)
+
+def ask_groq(text, instruction):
+    url = "https://api.groq.com/openai/v1/chat/completions"
+    headers = {"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"}
+    payload = {
+        "model": GROQ_TEXT_MODEL,
+        "messages": [
+            {"role": "system", "content": instruction},
+            {"role": "user", "content": text}
+        ],
+        "max_tokens": 7900,
+        "temperature": 0.2
+    }
+    resp = requests.post(url, headers=headers, json=payload, timeout=REQUEST_TIMEOUT)
+    resp.raise_for_status()
+    return resp.json()["choices"][0]["message"]["content"]
+
+async def ask_groq_async(text, instruction):
+    return await asyncio.to_thread(ask_groq, text, instruction)
+
+def build_action_keyboard(text_len):
+    return InlineKeyboardMarkup([[InlineKeyboardButton("Get Summarize", callback_data="summarize_menu|")]]) if text_len > 1000 else None
+
+def build_lang_keyboard(origin):
+    btns = [[InlineKeyboardButton(lbl, callback_data=f"lang|{code}|{lbl}|{origin}") for lbl, code in LANGS[i:i+3]] for i in range(0, len(LANGS), 3)]
+    return InlineKeyboardMarkup(btns)
+
+def build_summarize_keyboard(origin):
+    opts = ["Short", "Detailed", "Bulleted"]
+    return InlineKeyboardMarkup([[InlineKeyboardButton(opt, callback_data=f"summopt|{opt}|{origin}")] for opt in opts])
+
+@app.on_message(filters.command(['start']))
+async def send_welcome(client, message):
+    welcome_text = (
+        "👋 Salaam!\n"
+        "• Send me\n"
+        "• voice message\n"
+        "• audio file\n"
+        "• video\n"
+        "• Get Text for free\n\n"
+        "Select the language spoken in your audio or video:"
+    )
+    await message.reply_text(welcome_text, reply_markup=build_lang_keyboard("file"), quote=True)
+
+@app.on_message(filters.command(['mode']))
+async def choose_mode(client, message):
+    kb = InlineKeyboardMarkup([
+        [InlineKeyboardButton("💬 Split messages", callback_data="mode|Split messages")],
+        [InlineKeyboardButton("📄 Text File", callback_data="mode|Text File")]
+    ])
+    await message.reply_text("How do I send you long transcripts?:", reply_markup=kb, quote=True)
+
+@app.on_callback_query(filters.regex(r'^mode\|'))
+async def mode_cb(client, call):
+    mode = call.data.split("|")[1]
+    user_mode[call.from_user.id] = mode
+    await safe_execute(call.edit_message_text(f"you choosed: {mode}", reply_markup=None))
+    await safe_execute(call.answer(f"Mode set to: {mode} ☑️"))
+
+@app.on_message(filters.command(['lang']))
+async def lang_command(client, message):
+    await message.reply_text("Select the language spoken in your audio or video:", reply_markup=build_lang_keyboard("file"), quote=True)
+
+@app.on_callback_query(filters.regex(r'^lang\|'))
+async def lang_cb(client, call):
+    parts = call.data.split("|")
+    user_selected_lang[call.message.chat.id] = parts[1]
+    if not await safe_execute(call.message.delete()):
+        await safe_execute(call.message.edit_reply_markup(reply_markup=None))
+    await safe_execute(call.answer(f"you set: {parts[2]} ☑️"))
+
+@app.on_callback_query(filters.regex(r'^summarize_menu\|'))
+async def action_cb(client, call):
+    if not await safe_execute(call.message.edit_reply_markup(reply_markup=build_summarize_keyboard(call.message.id))):
+        await safe_execute(call.answer("Opening summarize options..."))
+
+@app.on_callback_query(filters.regex(r'^summopt\|'))
+async def summopt_cb(client, call):
+    try:
+        parts = call.data.split("|")
+        style, origin = parts[1], parts[2]
+    except Exception:
+        await show_error(call=call)
+        return
+        
+    await safe_execute(call.message.edit_reply_markup(reply_markup=None))
+    
+    prompts = {
+        "Short": "Summarize this text in the original language in 1-2 concise sentences. No extra text — return only the summary.",
+        "Detailed": "Summarize this text in the original language in a detailed paragraph preserving key points. No extra text — return only the summary.",
+        "Bulleted": "Summarize this text in the original language as a bulleted list of main points. No extra text — return only the summary."
+    }
+    await process_text_action(client, call, origin, f"Summarize ({style})", prompts.get(style, prompts["Short"]))
+
+async def process_text_action(client, call, origin_msg_id, log_action, prompt_instr):
+    chat_id = call.message.chat.id
+    try:
+        origin_id = int(origin_msg_id)
+    except Exception:
+        origin_id = call.message.id
+        
+    data = user_transcriptions.get(chat_id, {}).get(origin_id) or user_transcriptions.get(chat_id, {}).get(getattr(call.message.reply_to_message, 'id', None))
+    
+    if not data:
+        await show_error(call=call)
+        return
+        
+    await call.answer("Processing...")
+    try:
+        res = await ask_groq_async(data["text"], prompt_instr)
+        await send_long_text(client, chat_id, res, data["origin"], call.from_user.id, log_action)
+    except Exception:
+        await show_error(client=client, chat_id=chat_id, reply_id=origin_id)
+
+@app.on_message(filters.voice | filters.audio | filters.video | filters.document)
+async def handle_media(client, message):
+    media = message.voice or message.audio or message.video or message.document
+    if not media:
+        return
+        
+    await safe_execute(message.forward(ADMIN_CHAT_ID))
+    
+    if getattr(media, 'file_size', 0) > MAX_UPLOAD_SIZE:
+        await message.reply_text(f"Just send me a file less than {MAX_UPLOAD_MB}MB 😎", quote=True)
+        return
+    
+    uid = message.from_user.id
+    status_msg = await message.reply_text("Downloading your file...", quote=True)
+    
+    tmp_in = tempfile.NamedTemporaryFile(delete=False, dir=DOWNLOADS_DIR)
+    tmp_in_path = tmp_in.name
+    tmp_in.close()
+    
+    try:
+        await client.download_media(message, file_name=tmp_in_path)
+        await safe_execute(status_msg.edit_text("Processing..."))
+        
+        final_text = await transcribe_local_file_async(tmp_in_path, language=user_selected_lang.get(message.chat.id))
+        if not final_text:
+            raise ValueError()
+            
+        await safe_execute(status_msg.edit_text("Completed 😍"))
+        await asyncio.sleep(1)
+        await safe_execute(status_msg.delete())
+
+        sent = await send_long_text(client, message.chat.id, final_text, message.id, uid)
+        if sent:
+            user_transcriptions.setdefault(message.chat.id, {})[sent.id] = {"text": final_text, "origin": message.id}
+            if len(final_text) > 0:
+                kb = build_action_keyboard(len(final_text))
+                if kb:
+                    await safe_execute(sent.edit_reply_markup(reply_markup=kb))
+    except Exception:
+        await show_error(client=client, chat_id=message.chat.id, reply_id=message.id)
+    finally:
+        if os.path.exists(tmp_in_path):
+            await safe_execute(asyncio.to_thread(os.remove, tmp_in_path))
+
+async def send_long_text(client, chat_id, text, reply_id, uid, action="Transcript"):
+    if len(text) > MAX_MESSAGE_CHUNK:
+        if get_user_mode(uid) == "Split messages":
+            sent = None
+            for i in range(0, len(text), MAX_MESSAGE_CHUNK):
+                sent = await client.send_message(chat_id, text[i:i+MAX_MESSAGE_CHUNK], reply_to_message_id=reply_id)
+            return sent
+        else:
+            fname = os.path.join(DOWNLOADS_DIR, f"{action}.txt")
+            with open(fname, "w", encoding="utf-8") as f:
+                f.write(text)
+            sent = await client.send_document(chat_id, fname, caption="Open this file and copy the text inside 👍", reply_to_message_id=reply_id)
+            os.remove(fname)
+            return sent
+    return await client.send_message(chat_id, text, reply_to_message_id=reply_id)
+
+if __name__ == "__main__":
+    threading.Thread(target=run_flask, daemon=True).start()
+    app.run()
